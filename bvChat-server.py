@@ -64,14 +64,9 @@ def login(conn):
     getPassword = getLine(conn).strip('\n')
 
     if username == getUsername and password == getPassword:
-        #add user to list of clients
-        clients.append(conn)
-
-        #broadcast to all clients that user has joined
-        joinmsg = getUsername + " has joined the chat\n"
 
         return True, getUsername
-    return False
+    return False, None
 
 #threads for each client
 def handleClient(clientConn, peerAddr):
