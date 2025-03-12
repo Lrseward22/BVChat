@@ -70,20 +70,31 @@ def login(conn):
         #broadcast to all clients that user has joined
         joinmsg = getUsername + " has joined the chat\n"
 
-        return True
+        return True, getUsername
     return False
 
 #threads for each client
 def handleClient(clientConn, peerAddr):
     print("Client Connected")
     #login protocol
-    while not login(clientConn):
-        failedLoginMsg = "Your username or password is incorrect\n"
-        clientConn.send(failedLoginMsg.encode())
+    while True:
+        loginResult, username = login(clientConn)
+
+        if loginResult:
+            break
+        else:
+            failedLoginMsg = "Your username or password is incorrect\n"
+            clientConn.send(failedLoginMsg.encode())
 
     print("Client logged in successfully")
     loggedinMsg = "Logged in\n"
     clientConn.send(loggedinMsg.encode())
+
+    # add user to list of clients
+    clients.append(username)
+
+    # broadcast to all clients that user has joined
+    joinmsg = username + " has joined the chat\n"
 
     #Send MOTD
     clientConn.send(motdmsg.encode())
