@@ -2,6 +2,12 @@ from socket import *
 import threading
 #Server
 
+#List/Dict of connect clients
+clients = []
+
+#MOTD
+motdmsg = "Welcome to the chat server\n"
+
 def getLine(conn):
     msg = b''
     while True:
@@ -24,8 +30,8 @@ def exit(clientConn):
 def tell(user, message):
     pass
 
-def motd():
-    pass
+def motd(clientConn):
+    clientConn.send(motdmsg.encode())
 
 def me(message):
     pass
@@ -58,6 +64,12 @@ def login(conn):
     getPassword = getLine(conn).strip('\n')
 
     if username == getUsername and password == getPassword:
+        #add user to list of clients
+        clients.append(conn)
+
+        #broadcast to all clients that user has joined
+        joinmsg = getUsername + " has joined the chat\n"
+
         return True
     return False
 
@@ -72,6 +84,9 @@ def handleClient(clientConn, peerAddr):
     print("Client logged in successfully")
     loggedinMsg = "Logged in\n"
     clientConn.send(loggedinMsg.encode())
+
+    #Send MOTD
+    clientConn.send(motdmsg.encode())
 
     connected = True
     try:
@@ -88,7 +103,7 @@ def handleClient(clientConn, peerAddr):
                     exit(clientConn)
                     connected = False
                 if command[0] == "/tell": tell(command[1], command[2])
-                if command[0] == "/motd": motd()
+                if command[0] == "/motd": motd(clientConn)
                 if command[0] == "/me": me(command[1])
                 if command[0] == "/help": help()
             else:
