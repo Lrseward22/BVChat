@@ -1,6 +1,8 @@
 from socket import *
 import threading
 import sys
+from time import sleep
+
 #Client
 serverIP = sys.argv[1]
 serverPort = int(sys.argv[2])
@@ -34,11 +36,12 @@ try:
 
     while True:
         #get input from user, send to server
+        sleep(0.1)
         command = input("> ") + '\n'
         serverSock.send( command.encode() )
 
         #until /quit from user or keyboard interrupt
-        if command.strip('\n') == "quit":
+        if command.strip('\n') == "/exit":
             stop_event.set()
             serverSock.close()
             break

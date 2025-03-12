@@ -14,8 +14,12 @@ def getLine(conn):
 def who():
     pass
 
-def exit():
-    pass
+def exit(clientConn):
+    # TODO: officially log out user
+
+    print("Exiting...")
+    clientConn.close()
+    return
 
 def tell(user, message):
     pass
@@ -42,8 +46,17 @@ def login(conn):
     username = "Cartman"
     password = "111"
     print("Logging in...")
+
+    #Send a message telling the client to enter username
+    usermsg = "Enter your username:\n"
+    conn.send(usermsg.encode())
     getUsername = getLine(conn).strip('\n')
+
+    #send a message telling the client to enter password
+    passmsg = "Enter your password:\n"
+    conn.send(passmsg.encode())
     getPassword = getLine(conn).strip('\n')
+
     if username == getUsername and password == getPassword:
         return True
     return False
@@ -57,15 +70,34 @@ def handleClient(clientConn, peerAddr):
         clientConn.send(failedLoginMsg.encode())
 
     print("Client logged in successfully")
+    loggedinMsg = "Logged in\n"
+    clientConn.send(loggedinMsg.encode())
 
-    while True:
-        #get input from client, handle commands
-        command = getLine(clientConn).strip('\n')
-        print(command)
-        if command == "quit":
-            break
-    clientConn.close()
-    pass
+    connected = True
+    try:
+        while connected:
+            #get input from client, handle commands
+            command = getLine(clientConn).strip('\n').split(' ')
+            print(command)
+
+            # if command starts with "/" then it is a command
+            # that will call a function, otherwise it is a message
+            if command[0].startswith("/"):
+                if command[0] == "/who": who()
+                if command[0] == "/exit":
+                    exit(clientConn)
+                    connected = False
+                if command[0] == "/tell": tell(command[1], command[2])
+                if command[0] == "/motd": motd()
+                if command[0] == "/me": me(command[1])
+                if command[0] == "/help": help()
+            else:
+                #broadcast message to all clients
+                pass
+
+    except ConnectionResetError:
+        print("Client Disconnected")
+        pass
 
 # Initial socket setup
 serverPort = 12345
