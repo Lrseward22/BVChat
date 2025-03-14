@@ -3,14 +3,14 @@ import threading
 #Server
 
 #List/Dict of connect clients
-clients = []
+clients = {}
 
 #File containing users and the thread lock
 user_file = "users.txt"
 lock = threading.Lock()
 
 #MOTD
-motdmsg = "Welcome to the chat server\n"
+motdmsg = " MOTD - Welcome to the chat server\n"
 
 def getLine(conn):
     msg = b''
@@ -50,7 +50,7 @@ def who():
     pass
 
 def exit(clientConn, username):
-    clients.remove(username)
+    clients.pop(username)
 
     print(f"Disconnected from {username}")
     clientConn.close()
@@ -115,7 +115,11 @@ def login(conn):
 def handleClient(clientConn, peerAddr):
     print("Client Connected")
     #login protocol
+    attempts = 0
     while True:
+        attempts += 1
+
+        print ("Login Attempt: ", attempts)
         loginResult, username = login(clientConn)
 
         if loginResult:
@@ -125,14 +129,14 @@ def handleClient(clientConn, peerAddr):
     loggedinMsg = "Logged in\n"
     clientConn.send(loggedinMsg.encode())
 
-    # add user to list of clients
-    clients.append(username)
+    # add user to Dict of clients - key is username, value is connection
+    clients[username] = clientConn
 
     # broadcast to all clients that user has joined
-    joinmsg = username + " has joined the chat\n"
+    joinmsg = "Login Message-" + username + " has joined the chat\n"
 
     #Send MOTD
-    clientConn.send(motdmsg.encode())
+    motd(clientConn)
 
     connected = True
     try:
