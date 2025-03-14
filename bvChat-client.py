@@ -43,6 +43,7 @@ try:
         #until /quit from user or keyboard interrupt
         if command.strip('\n') == "/exit":
             stop_event.set()
+            sleep(0.1)
             serverSock.close()
             break
 

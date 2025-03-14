@@ -13,8 +13,18 @@ lock = threading.Lock()
 #key is username, value is list of messages
 messages = {}
 
+#List of commands
+#maybe changed later for admin
+commands = {
+    "/who": "Lists all connected users",
+    "/exit": "Disconnects you from the server",
+    "/tell <user> <message>": "Sends a private message to a user",
+    "/motd": "Displays the message of the day",
+    "/me <message>": "Sends an emote to all users",
+}
+
 #MOTD
-motdmsg = " MOTD - Welcome to the chat server\n"
+motdmsg = " MOTD - Welcome to the chat server, use `/help` to begin!\n"
 
 def getLine(conn):
     msg = b''
@@ -67,11 +77,16 @@ def catchup_messages(username):
             clients[username].send(message.encode())
         messages.pop(username)
 
-def who():
+def who(clientConn):
+    with lock:
+        clientConn.send("Users logged in:\n".encode())
+        for user in clients.keys():
+            clientConn.send(f"{user}\n".encode())
     pass
 
 def exit(clientConn, username):
-    clients.pop(username)
+    with lock:
+        clients.pop(username)
     print(f"Disconnected from {username}")
     clientConn.close()
     return
@@ -102,8 +117,12 @@ def me(username, message):
     emote = f"*{username} {message}\n"
     msg_all_but_messenger(username, emote)
 
-def help():
-    pass
+def help(clientConn):
+    helpmsg = "Commands:\n"
+    clientConn.send(helpmsg.encode())
+    for command, description in commands.items():
+        helpmsg = f"{command}: {description}\n"
+        clientConn.send(helpmsg.encode())
 
 def kick():
     pass
@@ -202,7 +221,7 @@ def handleClient(clientConn, peerAddr):
                     command = msg.lstrip('/')
                     rest = None
 
-                if command == "who": who()
+                if command == "who": who(clientConn)
                 if command == "exit":
                     exit(clientConn, username)
                     connected = False
@@ -214,7 +233,7 @@ def handleClient(clientConn, peerAddr):
                 if command == "me":
                     print ("here")
                     me(username, rest)
-                if command == "help": help()
+                if command == "help": help(clientConn)
 
     except ConnectionResetError:
         print("Client Disconnected")
