@@ -24,8 +24,8 @@ def getLine(conn):
 #separate thread handling incoming messages
 def listen(conn):
     while not stop_event.is_set():
-        msg = getLine(conn)
-        print(msg)
+        msg = getLine(conn).strip('\n')
+        print(msg, flush=True)
 
 #connect to server - login protocol
 
