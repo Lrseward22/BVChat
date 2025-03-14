@@ -5,6 +5,10 @@ import threading
 #List/Dict of connect clients
 clients = []
 
+#File containing users and the thread lock
+user_file = "users.txt"
+lock = threading.Lock()
+
 #MOTD
 motdmsg = "Welcome to the chat server\n"
 
@@ -17,13 +21,38 @@ def getLine(conn):
             break
     return msg.decode()
 
+#Determines if the user has previously logged in with correct credentials
+def authenticate_user(username, password):
+    #This return isn't intuitive, it's just the last permutation
+    if username in clients:
+        return False, True
+
+    with lock:
+        with open(user_file, 'r') as f:
+            for line in f:
+                _username, _password = line.strip().split(':')
+                #When all information exists, return True, True
+                #Return two bools for case when user already exists but didn't get password correct
+                if username == _username and password == _password:
+                    return True, True
+                #Existing user, wrong password
+                elif username == _username:
+                    return True, False
+    #New user
+    return False, False
+
+def add_user(username, password):
+    with lock:
+        with open(user_file, 'a') as f:
+            f.write(f"{username}:{password}\n")
+
 def who():
     pass
 
-def exit(clientConn):
-    # TODO: officially log out user
+def exit(clientConn, username):
+    clients.remove(username)
 
-    print("Exiting...")
+    print(f"Disconnected from {username}")
     clientConn.close()
     return
 
@@ -49,24 +78,38 @@ def unban():
     pass
 
 def login(conn):
-    username = "Cartman"
-    password = "111"
     print("Logging in...")
 
     #Send a message telling the client to enter username
     usermsg = "Enter your username:\n"
     conn.send(usermsg.encode())
-    getUsername = getLine(conn).strip('\n')
+    username = getLine(conn).strip('\n')
 
     #send a message telling the client to enter password
     passmsg = "Enter your password:\n"
     conn.send(passmsg.encode())
-    getPassword = getLine(conn).strip('\n')
+    password = getLine(conn).strip('\n')
+    is_user,is_pass = authenticate_user(username, password)
 
-    if username == getUsername and password == getPassword:
+    #User is already logged in, but another is trying to log in as them
+    if not is_user and is_pass:
+        auth_msg = "Someone is already logged in as this user\n"
+        conn.send(auth_msg.encode())
+        return False, username
 
-        return True, getUsername
-    return False, None
+    #Unsuccessful login
+    if is_user and not is_pass:
+        auth_msg = "You're password was incorrect\n"
+        conn.send(auth_msg.encode())
+        return False, username
+
+    #Add new user to file of users
+    if not is_user and not is_pass:
+        add_user(username, password)
+
+    #Successful login
+    return True, username
+
 
 #threads for each client
 def handleClient(clientConn, peerAddr):
@@ -77,9 +120,6 @@ def handleClient(clientConn, peerAddr):
 
         if loginResult:
             break
-        else:
-            failedLoginMsg = "Your username or password is incorrect\n"
-            clientConn.send(failedLoginMsg.encode())
 
     print("Client logged in successfully")
     loggedinMsg = "Logged in\n"
@@ -98,23 +138,31 @@ def handleClient(clientConn, peerAddr):
     try:
         while connected:
             #get input from client, handle commands
-            command = getLine(clientConn).strip('\n').split(' ')
-            print(command)
+            msg = getLine(clientConn).strip('\n')
+            print(msg)
 
-            # if command starts with "/" then it is a command
-            # that will call a function, otherwise it is a message
-            if command[0].startswith("/"):
-                if command[0] == "/who": who()
-                if command[0] == "/exit":
-                    exit(clientConn)
-                    connected = False
-                if command[0] == "/tell": tell(command[1], command[2])
-                if command[0] == "/motd": motd(clientConn)
-                if command[0] == "/me": me(command[1])
-                if command[0] == "/help": help()
-            else:
+            if not msg.startswith("/"):
                 #broadcast message to all clients
                 pass
+            # if command starts with "/" then it is a command
+            # that will call a function
+            else:
+                if ' ' in msg:
+                    command, rest = msg.split(' ', 1)
+                    command.lstrip('/')
+                else:
+                    command = msg.lstrip('/')
+
+                if command == "who": who()
+                if command == "exit":
+                    exit(clientConn, username)
+                    connected = False
+                if command == "tell":
+                    user, message = rest.split(' ', 1)
+                    tell(user, message)
+                if command == "motd": motd(clientConn)
+                if command == "me": me(rest)
+                if command == "help": help()
 
     except ConnectionResetError:
         print("Client Disconnected")
