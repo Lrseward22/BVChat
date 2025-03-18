@@ -26,6 +26,9 @@ def listen(conn):
     while not stop_event.is_set():
         msg = getLine(conn).strip('\n')
         print(msg, flush=True)
+        if not msg:
+            stop_event.set()
+            serverSock.close()
 
 #connect to server - login protocol
 

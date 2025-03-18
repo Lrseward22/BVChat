@@ -1,3 +1,4 @@
+import time
 from socket import *
 import threading
 #Server
@@ -8,6 +9,14 @@ clients = {}
 #File containing users and the thread lock
 user_file = "users.txt"
 lock = threading.Lock()
+
+#Dict of blocked IPs
+#key is IP, value is timestamp
+blockedIPs = {}
+
+#Dict of timestamps for failed login attempts
+#key is IP, value is list of timestamps
+failedLogins = {}
 
 #Dict holding messages for logged off users
 #key is username, value is list of messages
@@ -76,6 +85,33 @@ def catchup_messages(username):
         for message in messages[username]:
             clients[username].send(message.encode())
         messages.pop(username)
+
+def check_blocked(conn, userIP):
+    if userIP in blockedIPs:
+        # get timestamp from blockedIPs
+        timestamp = blockedIPs[userIP]
+
+        # get curr time
+        currTime = time.time()
+
+        # if they have been blocked longer than 2 minutes,
+        # remove them from the blocked list and return False
+        if currTime - timestamp > 120:
+            blockedIPs.pop(userIP)
+            return False
+        else:
+            # if they have been blocked for less than 2 minutes,
+            # tell them the remaining time and return True
+            remainingTime = 120 - (currTime - timestamp)
+            #format time
+            minutes = int(remainingTime/60)
+            seconds = int(remainingTime % 60)
+            blockedMsg = f"You have been blocked for {minutes} minutes and {seconds} seconds\n"
+            conn.send(blockedMsg.encode())
+            time.sleep(0.1)
+            return True
+
+    return False
 
 def who(clientConn):
     with lock:
@@ -171,15 +207,54 @@ def login(conn):
 def handleClient(clientConn, peerAddr):
     print("Client Connected")
     #login protocol
-    attempts = 0
-    while True:
-        attempts += 1
 
-        print ("Login Attempt: ", attempts)
+    #if a user gets 3 failed attempts within 30 seconds, they get timed out
+    attempts = 0
+
+    while True:
+
+        #if user is blocked, disconnect them
+        blocked = check_blocked(clientConn, peerAddr[0])
+        if blocked:
+            print("Client is blocked")
+            clientConn.close()
+            return
+
+        #if user is not blocked, continue with login protocol
         loginResult, username = login(clientConn)
 
+        #if login is successful, break out of loop
         if loginResult:
+            #remove user from failedLogins
+            if peerAddr[0] in failedLogins:
+                failedLogins.pop(peerAddr[0])
             break
+
+        attempts += 1
+        #take timestamp of attempt, append each attempt to list of failed logins
+        print(f"Failed login attempt {attempts} for {peerAddr[0]}")
+        if peerAddr[0] not in failedLogins:
+            failedLogins[peerAddr[0]] = [time.time()]
+        else:
+            failedLogins[peerAddr[0]].append(time.time())
+
+        #if attempts is greater than 3, check this timestamp against the
+        #timestamp 2 attempts ago to see if they were within 30 seconds
+        #if they were, block the user
+        if attempts > 2:
+            if failedLogins[peerAddr[0]][-1] - failedLogins[peerAddr[0]][-3] < 30:
+                print("Blocking client")
+                blockedIPs[peerAddr[0]] = time.time()
+
+                #send message to client
+                blockedMsg = "You have been blocked for 2 minutes\n"
+                clientConn.send(blockedMsg.encode())
+
+                #remove user from failedLogins
+                failedLogins.pop(peerAddr[0])
+
+                clientConn.close()
+                return
 
     print("Client logged in successfully")
     loggedinMsg = "Logged in\n"
