@@ -145,27 +145,33 @@ def help(clientConn):
         clientConn.send(helpmsg.encode())
 
 def kick(username):
+    conn = None
     with lock:
         for client in clients:
             if username == client[0]:
                 conn = client[1]
                 break
-    exit(conn, username)
+    if conn:
+        exit(conn, username)
 
 def ban(username):
-    kick(username)
-    banned.append(username)
+    if username not in banned:
+        kick(username)
+        banned.append(username)
 
 def unban(username):
-    banned.remove(username)
+    if username in banned:
+        banned.remove(username)
 
 def login(conn):
     print("Logging in...")
 
     #Send a message telling the client to enter username
     usermsg = "Enter your username:\n"
-    conn.send(usermsg.encode())
-    username = getLine(conn).strip('\n')
+    username = ''
+    while not username:
+        conn.send(usermsg.encode())
+        username = getLine(conn).strip('\n')
 
     #If user is banned, bail early
     if username in banned:
@@ -173,8 +179,11 @@ def login(conn):
 
     #send a message telling the client to enter password
     passmsg = "Enter your password:\n"
-    conn.send(passmsg.encode())
-    password = getLine(conn).strip('\n')
+    password = ''
+    while not password:
+        conn.send(passmsg.encode())
+        password = getLine(conn).strip('\n')
+
     is_user,is_pass = authenticate_user(username, password)
 
     #User is already logged in, but another is trying to log in as them
