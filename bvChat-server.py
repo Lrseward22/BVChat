@@ -2,8 +2,9 @@ from socket import *
 import threading
 #Server
 
-#List/Dict of connect clients
-clients = {}
+#List of tuples containing client username and connection info
+clients = []
+admin = None
 
 #File containing users and the thread lock
 user_file = "users.txt"
@@ -24,7 +25,7 @@ def getLine(conn):
 #Determines if the user has previously logged in with correct credentials
 def authenticate_user(username, password):
     #This return isn't intuitive, it's just the last permutation
-    if username in clients:
+    if username in [client[0] for client in clients]:
         return False, True
 
     with lock:
@@ -50,7 +51,10 @@ def who():
     pass
 
 def exit(clientConn, username):
-    clients.pop(username)
+    clients.remove( (username, clientConn) )
+
+    if admin == username:
+        admin = clients[0][0]
 
     print(f"Disconnected from {username}")
     clientConn.close()
@@ -68,13 +72,13 @@ def me(message):
 def help():
     pass
 
-def kick():
+def kick(username):
     pass
 
-def ban():
+def ban(username):
     pass
 
-def unban():
+def unban(username):
     pass
 
 def login(conn):
@@ -129,8 +133,11 @@ def handleClient(clientConn, peerAddr):
     loggedinMsg = "Logged in\n"
     clientConn.send(loggedinMsg.encode())
 
-    # add user to Dict of clients - key is username, value is connection
-    clients[username] = clientConn
+    # add user to list of clients - tuple of username and connection
+    clients.append( (username,clientConn) )
+
+    if not admin:
+        admin = username
 
     # broadcast to all clients that user has joined
     joinmsg = "Login Message-" + username + " has joined the chat\n"
@@ -158,15 +165,21 @@ def handleClient(clientConn, peerAddr):
                     command = msg.lstrip('/')
 
                 if command == "who": who()
-                if command == "exit":
+                elif command == "exit":
                     exit(clientConn, username)
                     connected = False
-                if command == "tell":
+                elif command == "tell":
                     user, message = rest.split(' ', 1)
                     tell(user, message)
-                if command == "motd": motd(clientConn)
-                if command == "me": me(rest)
-                if command == "help": help()
+                elif command == "motd": motd(clientConn)
+                elif command == "me": me(rest)
+                elif command == "help": help()
+
+                # Admin Commands
+                elif admin == username and command == "kick": kick(rest)
+                elif admin == username and command == "ban": ban(rest)
+                elif admin == username and command == "unban": unban(rest)
+
 
     except ConnectionResetError:
         print("Client Disconnected")
