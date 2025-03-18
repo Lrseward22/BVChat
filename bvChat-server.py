@@ -10,8 +10,22 @@ admin = None
 user_file = "users.txt"
 lock = threading.Lock()
 
+#Dict holding messages for logged off users
+#key is username, value is list of messages
+messages = {}
+
+#List of commands
+#maybe changed later for admin
+commands = {
+    "/who": "Lists all connected users",
+    "/exit": "Disconnects you from the server",
+    "/tell <user> <message>": "Sends a private message to a user",
+    "/motd": "Displays the message of the day",
+    "/me <message>": "Sends an emote to all users",
+}
+
 #MOTD
-motdmsg = " MOTD - Welcome to the chat server\n"
+motdmsg = " MOTD - Welcome to the chat server, use `/help` to begin!\n"
 
 def getLine(conn):
     msg = b''
@@ -47,11 +61,33 @@ def add_user(username, password):
         with open(user_file, 'a') as f:
             f.write(f"{username}:{password}\n")
 
-def who():
+def broadcast(message):
+    for client in clients.values():
+        client.send(message.encode())
+
+def msg_all_but_messenger(username, message):
+    for user, client in clients.items():
+        if user != username:
+            client.send(message.encode())
+
+def catchup_messages(username):
+    if username in messages:
+        msg = "You have private messages:\n"
+        clients[username].send(msg.encode())
+        for message in messages[username]:
+            clients[username].send(message.encode())
+        messages.pop(username)
+
+def who(clientConn):
+    with lock:
+        clientConn.send("Users logged in:\n".encode())
+        for user in clients.keys():
+            clientConn.send(f"{user}\n".encode())
     pass
 
 def exit(clientConn, username):
-    clients.remove( (username, clientConn) )
+    with lock:
+        clients.remove( (username, clientConn) )
 
     if admin == username:
         admin = clients[0][0]
@@ -60,17 +96,38 @@ def exit(clientConn, username):
     clientConn.close()
     return
 
-def tell(user, message):
-    pass
+def tell(srcUser, destUser, message):
+    message = f"{srcUser} tells you: {message}\n"
+
+    if destUser in clients:
+        clients[destUser].send(message.encode())
+        return
+
+    #check all registered users
+    with lock:
+        with open(user_file, 'r') as f:
+            for line in f:
+                _username, _password = line.strip().split(':')
+                if destUser == _username:
+                    if destUser in messages:
+                        messages[destUser].append(message)
+                    else:
+                        messages[destUser] = [message]
+                    return
 
 def motd(clientConn):
     clientConn.send(motdmsg.encode())
 
-def me(message):
-    pass
+def me(username, message):
+    emote = f"*{username} {message}\n"
+    msg_all_but_messenger(username, emote)
 
-def help():
-    pass
+def help(clientConn):
+    helpmsg = "Commands:\n"
+    clientConn.send(helpmsg.encode())
+    for command, description in commands.items():
+        helpmsg = f"{command}: {description}\n"
+        clientConn.send(helpmsg.encode())
 
 def kick(username):
     pass
@@ -134,16 +191,21 @@ def handleClient(clientConn, peerAddr):
     clientConn.send(loggedinMsg.encode())
 
     # add user to list of clients - tuple of username and connection
-    clients.append( (username,clientConn) )
+    with lock:
+        clients.append( (username,clientConn) )
 
     if not admin:
         admin = username
 
     # broadcast to all clients that user has joined
     joinmsg = "Login Message-" + username + " has joined the chat\n"
+    msg_all_but_messenger(username, joinmsg)
 
     #Send MOTD
     motd(clientConn)
+
+    #Catch up on messages
+    catchup_messages(username)
 
     connected = True
     try:
@@ -154,32 +216,37 @@ def handleClient(clientConn, peerAddr):
 
             if not msg.startswith("/"):
                 #broadcast message to all clients
-                pass
+                broadcastmsg = username + ": " + msg + "\n"
+                broadcast(broadcastmsg)
+
             # if command starts with "/" then it is a command
             # that will call a function
             else:
                 if ' ' in msg:
                     command, rest = msg.split(' ', 1)
-                    command.lstrip('/')
+                    command = command.lstrip('/')
                 else:
                     command = msg.lstrip('/')
+                    rest = None
 
-                if command == "who": who()
+                if command == "who": who(clientConn)
                 elif command == "exit":
                     exit(clientConn, username)
                     connected = False
                 elif command == "tell":
-                    user, message = rest.split(' ', 1)
-                    tell(user, message)
+                    if rest:
+                        destUser, message = rest.split(' ', 1)
+                        tell(username, destUser, message)
                 elif command == "motd": motd(clientConn)
-                elif command == "me": me(rest)
-                elif command == "help": help()
+                elif command == "me":
+                    print ("here")
+                    me(username, rest)
+                elif command == "help": help(clientConn)
 
                 # Admin Commands
                 elif admin == username and command == "kick": kick(rest)
                 elif admin == username and command == "ban": ban(rest)
                 elif admin == username and command == "unban": unban(rest)
-
 
     except ConnectionResetError:
         print("Client Disconnected")
