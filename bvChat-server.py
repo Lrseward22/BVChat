@@ -62,35 +62,43 @@ def add_user(username, password):
             f.write(f"{username}:{password}\n")
 
 def broadcast(message):
-    for client in clients.values():
-        client.send(message.encode())
+    for clientConn in [client[1] for client in clients]:
+        clientConn.send(message.encode())
 
 def msg_all_but_messenger(username, message):
-    for user, client in clients.items():
+    for user, client in clients:
         if user != username:
             client.send(message.encode())
 
 def catchup_messages(username):
     if username in messages:
         msg = "You have private messages:\n"
-        clients[username].send(msg.encode())
+        for client in clients:
+            if username == client[0]:
+                conn = client[1]
+        conn.send(msg.encode())
         for message in messages[username]:
-            clients[username].send(message.encode())
+            conn.send(message.encode())
         messages.pop(username)
 
 def who(clientConn):
     with lock:
         clientConn.send("Users logged in:\n".encode())
-        for user in clients.keys():
+        for client in clients:
+            user = client[0]
             clientConn.send(f"{user}\n".encode())
     pass
 
 def exit(clientConn, username):
+    global admin
     with lock:
         clients.remove( (username, clientConn) )
 
     if admin == username:
-        admin = clients[0][0]
+        if clients:
+            admin = clients[0][0]
+        else:
+            admin = None
 
     print(f"Disconnected from {username}")
     clientConn.close()
@@ -99,9 +107,10 @@ def exit(clientConn, username):
 def tell(srcUser, destUser, message):
     message = f"{srcUser} tells you: {message}\n"
 
-    if destUser in clients:
-        clients[destUser].send(message.encode())
-        return
+    for client in clients:
+        if destUser == client[0]:
+            client[1].send(message.encode())
+            return
 
     #check all registered users
     with lock:
@@ -174,6 +183,7 @@ def login(conn):
 
 #threads for each client
 def handleClient(clientConn, peerAddr):
+    global admin
     print("Client Connected")
     #login protocol
     attempts = 0
