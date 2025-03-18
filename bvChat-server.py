@@ -4,7 +4,10 @@ import threading
 
 #List of tuples containing client username and connection info
 clients = []
+
+# Admin user and list of banned users
 admin = None
+banned = []
 
 #File containing users and the thread lock
 user_file = "users.txt"
@@ -39,12 +42,13 @@ def getLine(conn):
 #Determines if the user has previously logged in with correct credentials
 def authenticate_user(username, password):
     #This return isn't intuitive, it's just the last permutation
-    if username in [client[0] for client in clients]:
-        return False, True
-
     with lock:
+        if username in [client[0] for client in clients]:
+            return False, True
+
         with open(user_file, 'r') as f:
             for line in f:
+                print(line)
                 _username, _password = line.strip().split(':')
                 #When all information exists, return True, True
                 #Return two bools for case when user already exists but didn't get password correct
@@ -62,24 +66,27 @@ def add_user(username, password):
             f.write(f"{username}:{password}\n")
 
 def broadcast(message):
-    for clientConn in [client[1] for client in clients]:
-        clientConn.send(message.encode())
+    with lock:
+        for clientConn in [client[1] for client in clients]:
+            clientConn.send(message.encode())
 
 def msg_all_but_messenger(username, message):
-    for user, client in clients:
-        if user != username:
-            client.send(message.encode())
+    with lock:
+        for user, client in clients:
+            if user != username:
+                client.send(message.encode())
 
 def catchup_messages(username):
-    if username in messages:
-        msg = "You have private messages:\n"
-        for client in clients:
-            if username == client[0]:
-                conn = client[1]
-        conn.send(msg.encode())
-        for message in messages[username]:
-            conn.send(message.encode())
-        messages.pop(username)
+    with lock:
+        if username in messages:
+            msg = "You have private messages:\n"
+            for client in clients:
+                if username == client[0]:
+                    conn = client[1]
+            conn.send(msg.encode())
+            for message in messages[username]:
+                conn.send(message.encode())
+            messages.pop(username)
 
 def who(clientConn):
     with lock:
@@ -87,18 +94,17 @@ def who(clientConn):
         for client in clients:
             user = client[0]
             clientConn.send(f"{user}\n".encode())
-    pass
 
 def exit(clientConn, username):
     global admin
     with lock:
         clients.remove( (username, clientConn) )
 
-    if admin == username:
-        if clients:
-            admin = clients[0][0]
-        else:
-            admin = None
+        if admin == username:
+            if clients:
+                admin = clients[0][0]
+            else:
+                admin = None
 
     print(f"Disconnected from {username}")
     clientConn.close()
@@ -107,13 +113,13 @@ def exit(clientConn, username):
 def tell(srcUser, destUser, message):
     message = f"{srcUser} tells you: {message}\n"
 
-    for client in clients:
-        if destUser == client[0]:
-            client[1].send(message.encode())
-            return
+    with lock:
+        for client in clients:
+            if destUser == client[0]:
+                client[1].send(message.encode())
+                return
 
     #check all registered users
-    with lock:
         with open(user_file, 'r') as f:
             for line in f:
                 _username, _password = line.strip().split(':')
@@ -139,13 +145,19 @@ def help(clientConn):
         clientConn.send(helpmsg.encode())
 
 def kick(username):
-    pass
+    with lock:
+        for client in clients:
+            if username == client[0]:
+                conn = client[1]
+                break
+    exit(conn, username)
 
 def ban(username):
-    pass
+    kick(username)
+    banned.append(username)
 
 def unban(username):
-    pass
+    banned.remove(username)
 
 def login(conn):
     print("Logging in...")
@@ -154,6 +166,10 @@ def login(conn):
     usermsg = "Enter your username:\n"
     conn.send(usermsg.encode())
     username = getLine(conn).strip('\n')
+
+    #If user is banned, bail early
+    if username in banned:
+        return False, None
 
     #send a message telling the client to enter password
     passmsg = "Enter your password:\n"
@@ -193,6 +209,12 @@ def handleClient(clientConn, peerAddr):
         print ("Login Attempt: ", attempts)
         loginResult, username = login(clientConn)
 
+        if username == None:
+            bannedmsg = "This user has been banned.\n"
+            clientConn.send(bannedmsg.encode())
+            clientConn.close()
+            return
+
         if loginResult:
             break
 
@@ -217,9 +239,9 @@ def handleClient(clientConn, peerAddr):
     #Catch up on messages
     catchup_messages(username)
 
-    connected = True
     try:
-        while connected:
+        # While the client is connected
+        while clientConn.fileno() != -1:
             #get input from client, handle commands
             msg = getLine(clientConn).strip('\n')
             print(msg)
@@ -240,23 +262,22 @@ def handleClient(clientConn, peerAddr):
                     rest = None
 
                 if command == "who": who(clientConn)
-                elif command == "exit":
-                    exit(clientConn, username)
-                    connected = False
+                elif command == "exit": exit(clientConn, username)
                 elif command == "tell":
                     if rest:
                         destUser, message = rest.split(' ', 1)
                         tell(username, destUser, message)
                 elif command == "motd": motd(clientConn)
-                elif command == "me":
-                    print ("here")
-                    me(username, rest)
+                elif command == "me": me(username, rest)
                 elif command == "help": help(clientConn)
 
                 # Admin Commands
-                elif admin == username and command == "kick": kick(rest)
-                elif admin == username and command == "ban": ban(rest)
-                elif admin == username and command == "unban": unban(rest)
+                elif admin == username and command == "kick":
+                    if rest: kick(rest)
+                elif admin == username and command == "ban":
+                    if rest: ban(rest)
+                elif admin == username and command == "unban":
+                    if rest: unban(rest)
 
     except ConnectionResetError:
         print("Client Disconnected")

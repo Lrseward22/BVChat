@@ -25,6 +25,9 @@ def getLine(conn):
 def listen(conn):
     while not stop_event.is_set():
         msg = getLine(conn).strip('\n')
+        if not msg:
+            stop_event.set()
+            serverSock.close()
         print(msg, flush=True)
 
 #connect to server - login protocol
@@ -37,8 +40,15 @@ try:
     while True:
         #get input from user, send to server
         sleep(0.1)
-        command = input("> ") + '\n'
-        serverSock.send( command.encode() )
+
+        # When still connected to the server, ask for a command
+        if serverSock.fileno() != -1:
+            command = input("> ") + '\n'
+
+        try:
+            serverSock.send( command.encode() )
+        except ConnectionResetError:
+            print("Server Disconnected")
 
         #until /quit from user or keyboard interrupt
         if command.strip('\n') == "/exit":
@@ -51,3 +61,5 @@ except KeyboardInterrupt:
     print("Client Shutting Down...")
     stop_event.set()
     serverSock.close()
+except Exception as e:
+    print("Server disconnected. Shutting down...")
