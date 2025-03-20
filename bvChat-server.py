@@ -341,7 +341,7 @@ def handleClient(clientConn, peerAddr):
                     command = command.lstrip('/')
                 else:
                     command = msg.lstrip('/')
-                    rest = None
+                    rest = ""
 
                 if command == "who": who(clientConn)
                 elif command == "exit": exit(clientConn, username)
@@ -361,9 +361,17 @@ def handleClient(clientConn, peerAddr):
                 elif admin == username and command == "unban":
                     if rest: unban(rest)
 
+                else:
+                    broadcastmsg = username + ": /" + command + rest + "\n"
+                    broadcast(broadcastmsg)
+
+
     except ConnectionResetError:
         print("Client Disconnected")
-        pass
+    except BrokenPipeError:
+        print("Client forcibly disconnected")
+    finally:
+        exit(clientConn, username)
 
 # Initial socket setup
 serverPort = 12345
