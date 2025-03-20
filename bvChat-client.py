@@ -29,6 +29,9 @@ def listen(conn):
             stop_event.set()
             serverSock.close()
         print(msg, flush=True)
+        if not msg:
+            stop_event.set()
+            serverSock.close()
 
 #connect to server - login protocol
 
