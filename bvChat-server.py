@@ -57,7 +57,6 @@ def authenticate_user(username, password):
 
         with open(user_file, 'r') as f:
             for line in f:
-                print(line)
                 _username, _password = line.strip().split(':')
                 #When all information exists, return True, True
                 #Return two bools for case when user already exists but didn't get password correct
