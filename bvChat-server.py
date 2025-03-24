@@ -132,12 +132,20 @@ def who(clientConn):
 
 def exit(clientConn, username):
     global admin
+
+    # broadcast to all clients that user has left
+    exitmsg = username + " is leaving the chat\n"
+    broadcast(exitmsg)
+
     with lock:
         clients.remove( (username, clientConn) )
+
 
         if admin == username:
             if clients:
                 admin = clients[0][0]
+                adminmsg = f"{admin} is now the admin\n"
+                broadcast(adminmsg)
             else:
                 admin = None
 
@@ -310,9 +318,11 @@ def handleClient(clientConn, peerAddr):
 
     if not admin:
         admin = username
+        adminmsg = f"{admin} is now the admin\n"
+        broadcast(adminmsg)
 
     # broadcast to all clients that user has joined
-    joinmsg = "Login Message-" + username + " has joined the chat\n"
+    joinmsg = username + " has joined the chat\n"
     msg_all_but_messenger(username, joinmsg)
 
     #Send MOTD
@@ -344,7 +354,7 @@ def handleClient(clientConn, peerAddr):
                     rest = ""
 
                 if command == "who": who(clientConn)
-                elif command == "exit": exit(clientConn, username)
+                elif command == "exit": raise ConnectionResetError
                 elif command == "tell":
                     if rest:
                         destUser, message = rest.split(' ', 1)
