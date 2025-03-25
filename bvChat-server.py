@@ -132,6 +132,7 @@ def who(clientConn):
 
 def exit(clientConn, username):
     global admin
+    print("current admin:", admin)
 
     # broadcast to all clients that user has left
     exitmsg = username + " is leaving the chat\n"
@@ -141,13 +142,14 @@ def exit(clientConn, username):
         clients.remove( (username, clientConn) )
 
 
-        if admin == username:
-            if clients:
-                admin = clients[0][0]
-                adminmsg = f"{admin} is now the admin\n"
-                broadcast(adminmsg)
-            else:
-                admin = None
+    if admin == username:
+        if clients:
+            admin = clients[0][0]
+
+            adminmsg = f"{admin} is now the admin\n"
+            broadcast(adminmsg)
+        else:
+            admin = None
 
     print(f"Disconnected from {username}")
     clientConn.close()
@@ -354,7 +356,7 @@ def handleClient(clientConn, peerAddr):
                     rest = ""
 
                 if command == "who": who(clientConn)
-                elif command == "exit": raise ConnectionResetError
+                elif command == "exit": exit(clientConn, username)
                 elif command == "tell":
                     if rest:
                         destUser, message = rest.split(' ', 1)
@@ -378,10 +380,11 @@ def handleClient(clientConn, peerAddr):
 
     except ConnectionResetError:
         print("Client Disconnected")
+        exit(clientConn, username)
     except BrokenPipeError:
         print("Client forcibly disconnected")
-    finally:
         exit(clientConn, username)
+
 
 # Initial socket setup
 serverPort = 12345
