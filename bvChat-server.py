@@ -88,12 +88,15 @@ def catchup_messages(username):
     with lock:
         if username in messages:
             msg = "You have private messages:\n"
+            # Find conn associated with username
             for client in clients:
                 if username == client[0]:
                     conn = client[1]
             conn.send(msg.encode())
+            # Send all messages since last log on
             for message in messages[username]:
                 conn.send(message.encode())
+            # Remove messages so they aren't sent again
             messages.pop(username)
 
 def check_blocked(conn, userIP):
@@ -126,6 +129,7 @@ def check_blocked(conn, userIP):
 def who(clientConn):
     with lock:
         clientConn.send("Users logged in:\n".encode())
+        # Send the username of each logged on user to the client who asked
         for client in clients:
             user = client[0]
             clientConn.send(f"{user}\n".encode())
@@ -141,11 +145,10 @@ def exit(clientConn, username):
     with lock:
         clients.remove( (username, clientConn) )
 
-
+    # Update admin if the user who left was the admin
     if admin == username:
         if clients:
             admin = clients[0][0]
-
             adminmsg = f"{admin} is now the admin\n"
             broadcast(adminmsg)
         else:
@@ -159,12 +162,13 @@ def tell(srcUser, destUser, message):
     message = f"{srcUser} tells you: {message}\n"
 
     with lock:
+        # Send message to the user if they are logged in
         for client in clients:
             if destUser == client[0]:
                 client[1].send(message.encode())
                 return
 
-    #check all registered users
+        # Else add to queued messages for when they next log on 
         with open(user_file, 'r') as f:
             for line in f:
                 _username, _password = line.strip().split(':')
@@ -191,11 +195,14 @@ def help(clientConn):
 
 def kick(username):
     conn = None
+
+    # Find the conn associated with the username
     with lock:
         for client in clients:
             if username == client[0]:
                 conn = client[1]
                 break
+    # Remove the connection
     if conn:
         exit(conn, username)
 
@@ -373,6 +380,7 @@ def handleClient(clientConn, peerAddr):
                 elif admin == username and command == "unban":
                     if rest: unban(rest)
 
+                # If the user messed up the command broadcast their failure to everyone
                 else:
                     broadcastmsg = username + ": /" + command + rest + "\n"
                     broadcast(broadcastmsg)
